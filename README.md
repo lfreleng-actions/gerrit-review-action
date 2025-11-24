@@ -35,18 +35,18 @@ steps:
 
 <!-- markdownlint-disable MD013 -->
 
-| Name                    | Required | Default  | Description                                    |
-| ----------------------- | -------- | -------- | ---------------------------------------------- |
-| host                    | True     |          | The Gerrit host with SSH available            |
-| port                    | False    | "29418"  | The SSH port to use                           |
-| username                | True     |          | The username to connect to the Gerrit host as |
-| key                     | True     |          | The SSH private key to use                    |
-| key_name                | False    | "id_rsa" | The filename for the key                      |
-| known_hosts             | True     |          | The known hosts for the host server           |
-| gerrit-change-number    | True     |          | The Gerrit Change Number to vote on           |
-| gerrit-patchset-number  | False    | "1"      | The patchset number of the change             |
-| vote-type               | False    | "clear"  | Vote type: clear, success, failure, cancelled |
-| comment-only            | False    | "false"  | Post comment without voting                   |
+| Name                   | Required | Default  | Description                                   |
+| ---------------------- | -------- | -------- | --------------------------------------------- |
+| host                   | True     |          | The Gerrit host with SSH available            |
+| port                   | False    | "29418"  | The SSH port to use                           |
+| username               | True     |          | The username to connect to the Gerrit host as |
+| key                    | True     |          | The SSH private key to use                    |
+| key_name               | False    | "id_rsa" | The filename for the key                      |
+| known_hosts            | True     |          | The known hosts for the host server           |
+| gerrit-change-number   | True     |          | The Gerrit Change Number to vote on           |
+| gerrit-patchset-number | False    | "1"      | The patchset number of the change             |
+| vote-type              | False    | "clear"  | Vote type: clear, success, failure, cancelled |
+| comment-only           | False    | "false"  | Post comment without voting                   |
 
 <!-- markdownlint-enable MD013 -->
 
