@@ -33,7 +33,6 @@ inputs:
     description: "The patchset number of the change that is being voted against"
     required: false
     default: "1"
-  vote-type:
     # yamllint disable-line rule:line-length
     description: "The type of vote to perform: clear, success, failure, cancelled"
     required: false
