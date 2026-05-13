@@ -35,18 +35,18 @@ steps:
 
 <!-- markdownlint-disable MD013 -->
 
-| Name                   | Required | Default  | Description                                   |
-| ---------------------- | -------- | -------- | --------------------------------------------- |
-| host                   | True     |          | The Gerrit host with SSH available            |
-| port                   | False    | "29418"  | The SSH port to use                           |
-| username               | True     |          | The username to connect to the Gerrit host as |
-| key                    | True     |          | The SSH private key to use                    |
-| key_name               | False    | "id_rsa" | The filename for the key                      |
-| known_hosts            | True     |          | The known hosts for the host server           |
-| gerrit-change-number   | True     |          | The Gerrit Change Number to vote on           |
-| gerrit-patchset-number | False    | "1"      | The patchset number of the change             |
-| vote-type              | False    | "clear"  | Vote type: clear, success, failure, cancelled |
-| comment-only           | False    | "false"  | Post comment without voting                   |
+| Name                   | Required | Default  | Description                                                                                                              |
+| ---------------------- | -------- | -------- | ------------------------------------------------------------------------------------------------------------------------ |
+| host                   | True     |          | The Gerrit host with SSH available (accepts a bare hostname or `host:port`; an embedded port overrides the `port` input) |
+| port                   | False    | "29418"  | The SSH port to use                                                                                                      |
+| username               | True     |          | The username to connect to the Gerrit host as                                                                            |
+| key                    | True     |          | The SSH private key to use                                                                                               |
+| key_name               | False    | "id_rsa" | The filename for the key                                                                                                 |
+| known_hosts            | True     |          | The known hosts for the host server                                                                                      |
+| gerrit-change-number   | True     |          | The Gerrit Change Number to vote on                                                                                      |
+| gerrit-patchset-number | False    | "1"      | The patchset number of the change                                                                                        |
+| vote-type              | False    | "clear"  | Vote type: clear, success, failure, cancelled                                                                            |
+| comment-only           | False    | "false"  | Post comment without voting                                                                                              |
 
 <!-- markdownlint-enable MD013 -->
 
@@ -96,6 +96,19 @@ The action requires SSH access to the Gerrit server. You must provide:
 2. **Known Hosts**: The SSH fingerprint for the Gerrit server
 3. **Username**: The Gerrit username for the CI account
 4. **Host**: The Gerrit server hostname
+
+The `host` input also accepts a `host:port` shorthand (for example,
+`modeseven.org:40086`), which suits callers that keep the Gerrit
+endpoint in a single repository variable. When `host` carries an
+embedded port (matching `name:digits`), the action splits it and uses
+that port in place of the `port` input. Plain hostnames pass through
+verbatim and the action honours the explicit `port` input.
+
+The action also accepts bare IPv6 literals (e.g. `host: ::1`)
+and uses the default `port: 29418` unless you override it. The
+action does **not** support bracketed IPv6 forms such as
+`[::1]:29418`; pass the bare address in `host` and the port in
+`port` instead.
 
 The action automatically configures SSH with the provided credentials and
 accepts legacy SSH-RSA key types for compatibility with Gerrit servers.
