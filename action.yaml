@@ -7,10 +7,19 @@ description: "Set review votes on a Gerrit system"
 
 inputs:
   host:
-    description: "The Gerrit host with SSH available"
+    description: >-
+      The Gerrit host with SSH available. Accepts a bare hostname
+      (e.g. 'gerrit.example.org') or a 'host:port' shorthand
+      (e.g. 'modeseven.org:40086'); an embedded port matching
+      'name:digits' overrides the 'port' input. Bare IPv6 literals
+      such as '::1' are accepted but bracketed forms
+      ('[::1]:29418') are not; pass an explicit 'port' alongside a
+      bare IPv6 host instead.
     required: true
   port:
-    description: "The SSH port to use. Default 29418"
+    description: >-
+      The SSH port to use (default 29418). Ignored when the 'host'
+      input carries an embedded ':port' shorthand.
     required: false
     default: "29418"
   username:
@@ -46,6 +55,121 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - name: "Parse host and port"
+      # Splits an embedded port off the 'host' input when it carries
+      # one (e.g. 'modeseven.org:40086'), so callers that store the
+      # Gerrit endpoint as a single 'host:port' string (as some
+      # short-lived test deployments do with bore-tunnelled CI
+      # Gerrits) do not have to be refactored into two repo vars.
+      #
+      # Plain hostnames behave exactly as before: the explicit
+      # 'port' input is honoured.  IPv6 literals are left alone -
+      # we only split when the trailing token after the LAST colon
+      # is purely numeric AND there are no other colons in the
+      # string (i.e. it matches 'name:digits').  Bracketed IPv6
+      # forms like '[::1]:29418' are not currently supported by
+      # the downstream ssh-key-action SSH config block and are
+      # left untouched.
+      id: target
+      shell: bash
+      env:
+        RAW_HOST: ${{ inputs.host }}
+        RAW_PORT: ${{ inputs.port }}
+      run: |
+        # Parse 'host' input and derive (host, port) outputs.
+        set -eu
+        HOST="${RAW_HOST}"
+        PORT="${RAW_PORT}"
+
+        # If the input looks like 'something:something_else' with
+        # exactly one colon (i.e. not an IPv6 literal, which carries
+        # multiple colons), the trailing token must be a numeric
+        # port.  Reject the 'name:non-numeric' shape up front with a
+        # clear actionable error so a typo like 'example.com:abc'
+        # does not slip past the split below, satisfy the broader
+        # host character whitelist (which permits ':' for IPv6),
+        # and then reach 'ssh' as an unresolvable hostname.
+        case "${HOST}" in
+          *:*:*)
+            : ;; # multiple colons - IPv6 candidate, leave alone
+          *:*)
+            tail="${HOST##*:}"
+            if [[ ! "${tail}" =~ ^[0-9]+$ ]]; then
+              echo "::error::Refusing to use host '${HOST}':" \
+                "single ':' present but trailing token '${tail}'" \
+                "is not numeric.  Use 'host:NNNN' (numeric port)" \
+                "or pass 'host' and 'port' as separate inputs."
+              exit 1
+            fi
+            ;;
+        esac
+
+        # Split only when input looks like 'name:digits' (one colon,
+        # numeric tail) - avoids mangling IPv6 literals.
+        if [[ "${HOST}" =~ ^[^:]+:[0-9]+$ ]]; then
+          PORT="${HOST##*:}"
+          HOST="${HOST%:*}"
+          echo "Parsed host:port from 'host' input:"
+          echo "  host=${HOST}"
+          echo "  port=${PORT}"
+        else
+          echo "Using inputs verbatim: host=${HOST} port=${PORT}"
+        fi
+
+        # Validate the resolved host and port before exporting them
+        # as step outputs.  Two reasons:
+        #
+        # * Defence-in-depth against an untrusted 'host' input
+        #   smuggling newlines or '<<DELIM' markers into the
+        #   $GITHUB_OUTPUT file and synthesising extra outputs;
+        # * Defence against argument injection at the downstream
+        #   'ssh <host> ...' invocation, where a leading '-' or an
+        #   embedded whitespace would be parsed by OpenSSH as an
+        #   option rather than a destination.
+        #
+        # The accepted host alphabet covers DNS names, IPv4
+        # literals, and bare IPv6 literals ('::1' style).  Bracketed
+        # IPv6 forms ('[::1]:29418') already bypass the split above
+        # and remain unsupported here.  Operators that need exotic
+        # hostnames can extend this character class explicitly.
+        if [[ ! "${HOST}" =~ ^[A-Za-z0-9._:-]+$ ]]; then
+          echo "::error::Refusing to use host '${HOST}':" \
+               "contains characters outside [A-Za-z0-9._:-]"
+          exit 1
+        fi
+        case "${HOST}" in
+          -*)
+            echo "::error::Refusing to use host '${HOST}':" \
+                 "starts with '-' (parsed as an ssh option)"
+            exit 1
+            ;;
+        esac
+        if [[ ! "${PORT}" =~ ^[0-9]+$ ]]; then
+          echo "::error::Refusing to use port '${PORT}': not a positive integer"
+          exit 1
+        fi
+        # Cap the digit length before the numeric range check below.
+        # 'test -lt'/'-gt' (POSIX) can fail with status 2 ("integer
+        # expression expected") when fed a digit string that
+        # overflows shell's signed arithmetic, which would otherwise
+        # mask an invalid port instead of rejecting it.  The valid
+        # range 1..65535 fits in 5 digits, so anything longer is
+        # definitely out of range.
+        if [ "${#PORT}" -gt 5 ]; then
+          echo "::error::Refusing to use port '${PORT}':" \
+            "more than 5 digits (max valid port is 65535)"
+          exit 1
+        fi
+        if [ "${PORT}" -lt 1 ] || [ "${PORT}" -gt 65535 ]; then
+          echo "::error::Refusing to use port '${PORT}': outside 1-65535"
+          exit 1
+        fi
+
+        {
+          echo "host=${HOST}"
+          echo "port=${PORT}"
+        } >> "${GITHUB_OUTPUT}"
+
     - name: Install SSH Key
       if: ${{ !env.ACT }}
       # yamllint disable-line rule:line-length
@@ -55,9 +179,9 @@ runs:
         name: ${{ inputs.key_name }}
         known_hosts: ${{ inputs.known_hosts }}
         config: |
-          Host ${{ inputs.host }}
+          Host ${{ steps.target.outputs.host }}
             User ${{ inputs.username }}
-            Port ${{ inputs.port }}
+            Port ${{ steps.target.outputs.port }}
             PubkeyAcceptedKeyTypes +ssh-rsa
             IdentityFile ~/.ssh/${{ inputs.key_name }}
 
@@ -118,4 +242,8 @@ runs:
         MESSAGE="${STATUS}: ${{ github.server_url }}/${{ github.repository}}/actions/runs/${{ github.run_id }}"
         PATCH="${{ inputs.gerrit-change-number}},${{ inputs.gerrit-patchset-number }}"
         COMMAND="review ${PATCH} --message '${MESSAGE}' ${VOTE} --tag autogenerated:github"
-        ssh ${{ inputs.host }} gerrit "${COMMAND}"
+        # Pass '--' before the host so OpenSSH never parses a
+        # leading '-' in the destination as an option (the parse
+        # step above already rejects such values, but keep the
+        # invocation site itself argument-injection-safe).
+        ssh -- ${{ steps.target.outputs.host }} gerrit "${COMMAND}"
