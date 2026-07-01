@@ -1,0 +1,38 @@
+---
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 The Linux Foundation
+
+# This workflow uses actions that are not certified by GitHub. They are provided
+# by a third-party and are governed by separate terms of service, privacy
+# policy, and support documentation.
+
+name: "OpenSSF Scorecard"
+
+# yamllint disable-line rule:truthy
+on:
+  workflow_dispatch:
+  # For Branch-Protection check. Only the default branch is supported. See
+  # https://github.com/ossf/scorecard/blob/main/docs/checks.md#branch-protection
+  branch_protection_rule:
+  # To guarantee Maintained check is occasionally updated. See
+  # https://github.com/ossf/scorecard/blob/main/docs/checks.md#maintained
+  schedule:
+    - cron: "50 4 * * 0"
+  push:
+    branches: ["main", "master"]
+
+# Declare default permissions as none.
+permissions: {}
+
+jobs:
+  openssf-scorecard:
+    name: "OpenSSF Scorecard"
+    # yamllint disable-line rule:line-length
+    uses: lfit/releng-reusable-workflows/.github/workflows/reuse-openssf-scorecard.yaml@fd3c1b43bc919e9e70787b009ffa2768ddbb1267  # v0.7.2
+    permissions:
+      contents: read  # Read repository contents (checkout, etc.)
+      # yamllint disable-line rule:line-length
+      security-events: write  # Upload results to the code-scanning dashboard
+      id-token: write  # Publish results and obtain Scorecard badge via OIDC
+      # Uncomment the permission below if installing in a private repository.
+      # actions: read
