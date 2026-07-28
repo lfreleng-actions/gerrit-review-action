@@ -3,6 +3,7 @@
 # SPDX-FileCopyrightText: 2025 The Linux Foundation
 
 ci:
+  autofix_prs: false
   autofix_commit_msg: |
     Chore: pre-commit autofixes
 
