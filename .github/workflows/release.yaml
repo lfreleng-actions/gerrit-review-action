@@ -1,0 +1,45 @@
+---
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 The Linux Foundation
+
+# Thin caller for the reusable release workflow in generic-workflows.
+#
+# Replaces the former "fat" tag-push.yaml, which carried its own copy of
+# the validate-then-promote job graph. The reusable validates the pushed
+# tag against the organisation's release-gating policy, ensures a draft
+# release exists for the tag (creating one if release-drafter has not),
+# and then publishes it.
+#
+# No `with:` block: this repository adopts the reusable's defaults in
+# full. That covers the release-gating policy and also the runner
+# hardening defaults (egress policy and its allow-list). See the
+# generic-workflows README for every input and its default.
+name: 'Release on Tag Push 🚀'
+
+# yamllint disable-line rule:truthy
+on:
+  push:
+    tags:
+      - '**'
+
+permissions: {}
+
+# Serialise repeated runs for the same tag; never cancel an in-flight
+# release promotion. Distinct tags use distinct groups and proceed
+# independently. This group cannot collide with the reusable's own,
+# which carries a literal workflow-specific prefix.
+concurrency:
+  group: '${{ github.workflow }}-${{ github.ref }}'
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: 'Release'
+    # Deleting a tag also fires this push event. The reusable skips its
+    # own jobs on a deletion, but guarding here too keeps the previous
+    # behaviour exactly: no run starts at all.
+    if: "!github.event.deleted"
+    permissions:
+      contents: write  # Promote (publish) the draft release for the tag
+    # yamllint disable-line rule:line-length
+    uses: lfreleng-actions/generic-workflows/.github/workflows/release.yaml@007258a132e4ba5358a20a5c0a902fa04de3a045  # v0.0.4
