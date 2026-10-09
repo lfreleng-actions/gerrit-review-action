@@ -9,3 +9,11 @@ paths:
       # Ignore deliberate test failure
       - 'input "invalid_input" is not defined in action .+'
       - 'missing input "input" which is required by action .+'
+      # GitHub's self-repository 'uses: $/' syntax resolves to this
+      # repository's root action, and zizmor's self-repository audit
+      # reports the older './' form as a finding. Upstream actionlint
+      # v1.7.12 predates the syntax and rejects it as a remote action
+      # without a ref; the actions-template repository carries the
+      # same exception. The closing quote sits right after '$/', so
+      # malformed forms such as '$//' are still reported.
+      - 'specifying action "\$/" in invalid format because ref is missing'
