@@ -1,0 +1,155 @@
+---
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 The Linux Foundation
+
+# Action test/validation workflow
+name: "Test GitHub Action 🧪"
+
+# yamllint disable-line rule:truthy
+on:
+  workflow_dispatch:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+concurrency:
+  group: "${{ github.workflow }}-${{ github.ref }}"
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  unit-tests:
+    name: "Review command unit tests"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 5
+    steps:
+      # yamllint disable-line rule:line-length
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+
+      - name: "Checkout repository"
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: "Run unit tests"
+        shell: bash
+        run: |
+          # Run the review command tests
+          python3 -m unittest discover -s tests -v
+
+  dry-run:
+    name: "Action dry run (ACT)"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 5
+    # ACT skips the SSH key and Vote steps; the review is still
+    # composed and validated, which is what these steps exercise.
+    env:
+      ACT: "true"
+    steps:
+      # yamllint disable-line rule:line-length
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+
+      - name: "Checkout repository"
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: "Generate oversized message"
+        id: generate
+        shell: bash
+        run: |
+          # One byte over the 4096-byte message limit
+          printf 'oversized=%s\n' "$(printf 'a%.0s' {1..4097})" \
+            >> "${GITHUB_OUTPUT}"
+
+      - name: "Without a message"
+        uses: $/
+        with:
+          host: "gerrit.example.org"
+          username: "ci-bot"
+          key: "unused"
+          known_hosts: "unused"
+          gerrit-change-number: "1"
+          vote-type: "success"
+
+      - name: "With a merge outcome message"
+        uses: $/
+        with:
+          host: "gerrit.example.org"
+          username: "ci-bot"
+          key: "unused"
+          known_hosts: "unused"
+          gerrit-change-number: "1"
+          vote-type: "success"
+          comment-only: "true"
+          message: |
+            Snapshot 1.1.2-SNAPSHOT published to nexus.
+            No release file, nothing released.
+
+      - name: "With shell metacharacters in the message"
+        uses: $/
+        with:
+          host: "gerrit.example.org"
+          username: "ci-bot"
+          key: "unused"
+          known_hosts: "unused"
+          gerrit-change-number: "1"
+          vote-type: "failure"
+          message: >-
+            it's "quoted" $(touch pwned) `touch pwned` ; touch pwned \
+
+      - name: "Oversized message"
+        id: oversized
+        continue-on-error: true
+        uses: $/
+        with:
+          host: "gerrit.example.org"
+          username: "ci-bot"
+          key: "unused"
+          known_hosts: "unused"
+          gerrit-change-number: "1"
+          message: ${{ steps.generate.outputs.oversized }}
+
+      - name: "Message with a control character"
+        id: control
+        continue-on-error: true
+        uses: $/
+        with:
+          host: "gerrit.example.org"
+          username: "ci-bot"
+          key: "unused"
+          known_hosts: "unused"
+          gerrit-change-number: "1"
+          message: "tab\tseparated"
+
+      - name: "Check the invalid messages were rejected"
+        shell: bash
+        env:
+          OVERSIZED: ${{ steps.oversized.outcome }}
+          CONTROL: ${{ steps.control.outcome }}
+        run: |
+          # Both steps must fail, and nothing may have run 'touch'
+          status=0
+          if [ "${OVERSIZED}" != "failure" ]; then
+            echo "::error::Oversized message was not rejected"
+            status=1
+          fi
+          if [ "${CONTROL}" != "failure" ]; then
+            echo "::error::Control character was not rejected"
+            status=1
+          fi
+          if [ -e pwned ]; then
+            echo "::error::A message was executed"
+            status=1
+          fi
+          exit "${status}"
