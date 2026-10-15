@@ -28,11 +28,11 @@ jobs:
   openssf-scorecard:
     name: "OpenSSF Scorecard"
     # yamllint disable-line rule:line-length
-    uses: lfit/releng-reusable-workflows/.github/workflows/reuse-openssf-scorecard.yaml@87eacd1f8322263ebbc1411ce2ea82bab10ed091  # v0.10.3
+    uses: lfreleng-actions/security-workflows/.github/workflows/openssf-scorecard.yaml@179b57cc41fbdae90d68237b418539d33e5ba091  # v0.9.4
     permissions:
-      contents: read  # Read repository contents (checkout, etc.)
-      # yamllint disable-line rule:line-length
-      security-events: write  # Upload results to the code-scanning dashboard
-      id-token: write  # Publish results and obtain Scorecard badge via OIDC
-      # Uncomment the permission below if installing in a private repository.
-      # actions: read
+      contents: read  # checkout
+      security-events: write  # upload results to the code scanning dashboard
+      id-token: write  # publish results and obtain the badge, via OIDC
+      actions: read  # upload-sarif reads run info on private repositories
+      # The lane's scan job requests only the scopes above, so granting
+      # more here has no effect, including on a private repository.
