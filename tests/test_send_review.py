@@ -133,7 +133,6 @@ class SendReviewTest(unittest.TestCase):
         self.assertEqual(len(warnings), 1, sent.result.stdout)
         self.assertIn("change 123 patchset 4", warnings[0])
 
-    @unittest.expectedFailure
     def test_successful_review(self) -> None:
         sent = send([(0, "")])
         self.assertEqual(sent.result.returncode, 0, sent.result.stderr)
@@ -141,7 +140,6 @@ class SendReviewTest(unittest.TestCase):
         self.assertEqual(sent.outputs, {"change-closed": "false"})
         self.assertNotIn("::warning", sent.result.stdout)
 
-    @unittest.expectedFailure
     def test_change_is_closed_retries_as_comment(self) -> None:
         sent = send([(1, CHANGE_IS_CLOSED), (0, "")])
         self.assertEqual(
@@ -153,7 +151,6 @@ class SendReviewTest(unittest.TestCase):
         # Gerrit's reply still reaches the log
         self.assertIn("change is closed", sent.result.stderr)
 
-    @unittest.expectedFailure
     def test_cannot_reduce_vote_retries_as_comment(self) -> None:
         sent = send([(1, CANNOT_REDUCE_VOTE), (0, "")])
         self.assertEqual(
@@ -163,13 +160,11 @@ class SendReviewTest(unittest.TestCase):
         self.assert_closed_with_warning(sent)
         self.assertIn("as a comment instead of a vote", sent.result.stdout)
 
-    @unittest.expectedFailure
     def test_match_ignores_case(self) -> None:
         sent = send([(1, "fatal: CHANGE IS CLOSED\n"), (0, "")])
         self.assertEqual(len(sent.calls), 2)
         self.assert_closed_with_warning(sent)
 
-    @unittest.expectedFailure
     def test_comment_only_review_is_not_retried(self) -> None:
         sent = send(
             [(1, CHANGE_IS_CLOSED)],
@@ -179,7 +174,6 @@ class SendReviewTest(unittest.TestCase):
         self.assertEqual(sent.calls, [["--", HOST, COMMENT_COMMAND]])
         self.assert_closed_with_warning(sent)
 
-    @unittest.expectedFailure
     def test_failed_retry_still_warns(self) -> None:
         sent = send([(1, CHANGE_IS_CLOSED), (1, CHANGE_IS_CLOSED)])
         self.assertEqual(len(sent.calls), 2)
@@ -187,7 +181,6 @@ class SendReviewTest(unittest.TestCase):
         self.assertIn("retry failed", sent.result.stdout)
         self.assertNotIn("as a comment instead of a vote", sent.result.stdout)
 
-    @unittest.expectedFailure
     def test_closed_change_with_fail_exits_non_zero(self) -> None:
         sent = send([(1, CHANGE_IS_CLOSED)], CLOSED_CHANGE="fail")
         self.assertNotEqual(sent.result.returncode, 0)
@@ -196,7 +189,6 @@ class SendReviewTest(unittest.TestCase):
         self.assertNotIn("::warning", sent.result.stdout)
         self.assertIn("change is closed", sent.result.stderr)
 
-    @unittest.expectedFailure
     def test_unrelated_failure_exits_non_zero(self) -> None:
         for setting in ("warn", "fail"):
             with self.subTest(closed_change=setting):
@@ -207,7 +199,6 @@ class SendReviewTest(unittest.TestCase):
                 self.assertNotIn("::warning", sent.result.stdout)
                 self.assertIn("Permission denied", sent.result.stderr)
 
-    @unittest.expectedFailure
     def test_invalid_closed_change_rejected_before_ssh(self) -> None:
         for setting in ("", "ignore", "Warn", "warn\n::warning::x"):
             with self.subTest(closed_change=setting):

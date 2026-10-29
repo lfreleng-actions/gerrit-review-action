@@ -132,14 +132,31 @@ jobs:
           gerrit-change-number: "1"
           message: "tab\tseparated"
 
-      - name: "Check the invalid messages were rejected"
+      - name: "Invalid closed-change setting"
+        id: closed
+        continue-on-error: true
+        uses: $/
+        with:
+          host: "gerrit.example.org"
+          username: "ci-bot"
+          key: "unused"
+          known_hosts: "unused"
+          gerrit-change-number: "1"
+          closed-change: "ignore"
+
+      - name: "Check the invalid inputs were rejected"
         shell: bash
         env:
           OVERSIZED: ${{ steps.oversized.outcome }}
           CONTROL: ${{ steps.control.outcome }}
+          CLOSED: ${{ steps.closed.outcome }}
         run: |
-          # Both steps must fail, and nothing may have run 'touch'
+          # Each step must fail, and nothing may have run 'touch'
           status=0
+          if [ "${CLOSED}" != "failure" ]; then
+            echo "::error::Invalid closed-change was not rejected"
+            status=1
+          fi
           if [ "${OVERSIZED}" != "failure" ]; then
             echo "::error::Oversized message was not rejected"
             status=1
