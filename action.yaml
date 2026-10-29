@@ -59,6 +59,21 @@ inputs:
       The text reaches Gerrit verbatim and is never run by any shell.
     required: false
     default: ""
+  closed-change:
+    description: >-
+      What to do when Gerrit refuses the review because the change has
+      already merged or been abandoned: 'warn' (default) posts the
+      result as a comment instead of a vote, emits a warning and
+      succeeds; 'fail' fails the step.
+    required: false
+    default: "warn"
+
+outputs:
+  change-closed:
+    description: >-
+      'true' when Gerrit refused the review because the change had
+      already closed, otherwise 'false'.
+    value: ${{ steps.vote.outputs.change-closed || 'false' }}
 
 runs:
   using: "composite"
@@ -192,22 +207,38 @@ runs:
         GERRIT_CHANGE_NUMBER: ${{ inputs.gerrit-change-number }}
         GERRIT_PATCHSET_NUMBER: ${{ inputs.gerrit-patchset-number }}
         REVIEW_MESSAGE: ${{ inputs.message }}
+        CLOSED_CHANGE: ${{ inputs.closed-change }}
         # yamllint disable-line rule:line-length
         RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
       run: |
-        # Compose the remote review command and export it as an output
+        # Compose the remote review commands and export them as outputs
         set -euo pipefail
+        case "${CLOSED_CHANGE}" in
+          warn | fail) ;;
+          *)
+            echo "::error::Refusing to use closed-change:" \
+              "expected warn or fail"
+            exit 1
+            ;;
+        esac
         review="$("${GITHUB_ACTION_PATH}/scripts/review-command.sh")"
-        # The command can span lines (a multi-line message), so write
-        # it with a random heredoc delimiter it cannot contain.
+        # The same review without labels, sent instead of the vote
+        # when Gerrit refuses it because the change has closed.
+        comment="$(COMMENT_ONLY=true \
+          "${GITHUB_ACTION_PATH}/scripts/review-command.sh")"
+        # The commands can span lines (a multi-line message), so write
+        # them with a random heredoc delimiter they cannot contain.
         delimiter="EOF_$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
-        if [[ "${review}" == *"${delimiter}"* ]]; then
+        if [[ "${review}${comment}" == *"${delimiter}"* ]]; then
           echo "::error::Review command collides with output delimiter"
           exit 1
         fi
         {
           echo "command<<${delimiter}"
           printf '%s\n' "${review}"
+          echo "${delimiter}"
+          echo "comment_command<<${delimiter}"
+          printf '%s\n' "${comment}"
           echo "${delimiter}"
         } >> "${GITHUB_OUTPUT}"
 
@@ -227,6 +258,7 @@ runs:
             IdentityFile ~/.ssh/${{ inputs.key_name }}
 
     - name: Vote
+      id: vote
       if: ${{ !env.ACT }}
       shell: bash
       # All untrusted/templated values are passed through 'env:' and
@@ -235,11 +267,11 @@ runs:
       env:
         TARGET_HOST: ${{ steps.target.outputs.host }}
         REVIEW_COMMAND: ${{ steps.review.outputs.command }}
+        COMMENT_COMMAND: ${{ steps.review.outputs.comment_command }}
+        COMMENT_ONLY: ${{ inputs.comment-only }}
+        CLOSED_CHANGE: ${{ inputs.closed-change }}
+        GERRIT_CHANGE_NUMBER: ${{ inputs.gerrit-change-number }}
+        GERRIT_PATCHSET_NUMBER: ${{ inputs.gerrit-patchset-number }}
       run: |
         # Send the composed review to Gerrit
-        set -eu
-        # Pass '--' before the host so OpenSSH never parses a
-        # leading '-' in the destination as an option (the parse
-        # step above already rejects such values, but keep the
-        # invocation site itself argument-injection-safe).
-        ssh -- "${TARGET_HOST}" "${REVIEW_COMMAND}"
+        bash "${GITHUB_ACTION_PATH}/scripts/send-review.sh"
