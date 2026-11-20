@@ -12,3 +12,8 @@ updates:
       prefix: "Chore"
     cooldown:
       default-days: 7
+      # Our own organisation's actions and reusable workflows skip the
+      # cooldown: we review those releases ourselves, and their fixes
+      # need to reach callers without a week's delay.
+      exclude:
+        - "lfreleng-actions/*"
