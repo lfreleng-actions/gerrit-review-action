@@ -54,7 +54,8 @@ inputs:
   message:
     description: >-
       Optional text appended to the review comment, after a blank
-      line, below the status line and run URL. At most 4096 bytes;
+      line, below the status and job lines. The whole comment, with
+      the status and job lines and trailers, holds at most 4096 bytes;
       newlines are allowed but other control characters are rejected.
       The text reaches Gerrit verbatim and is never run by any shell.
     required: false
@@ -67,6 +68,28 @@ inputs:
       succeeds; 'fail' fails the step.
     required: false
     default: "warn"
+  report-annotations:
+    description: >-
+      'true' adds an ERRORS block listing the failure annotations of
+      this run attempt's failed jobs to a 'failure' or 'cancelled'
+      vote; 'false' (default) leaves it out. Reading them never fails
+      the step: on any error the review goes without the block.
+    required: false
+    default: "false"
+  github-token:
+    description: >-
+      Token that reads the run's jobs and annotations for
+      'report-annotations'; needs 'actions: read' and 'checks: read'.
+    required: false
+    default: ${{ github.token }}
+  trailers:
+    description: >-
+      Optional newline-separated 'Key: value' lines appended as the
+      last block of the review comment. Each line must match
+      '^[A-Za-z][A-Za-z0-9-]*: \S.*$'; no control characters other
+      than newline, and they count towards the comment's 4096 bytes.
+    required: false
+    default: ""
 
 outputs:
   change-closed:
@@ -193,12 +216,42 @@ runs:
           echo "port=${PORT}"
         } >> "${GITHUB_OUTPUT}"
 
+    - name: "Read failed jobs"
+      # Lists the failure annotations of this run attempt's failed
+      # jobs for the ERRORS block. scripts/failed-jobs.py turns any
+      # error into a warning and no items, and continue-on-error
+      # keeps anything else from failing the vote. Skipped under ACT,
+      # so dry runs make no network call.
+      id: errors
+      if: >-
+        ${{ !env.ACT && inputs.report-annotations == 'true'
+        && (inputs.vote-type == 'failure'
+        || inputs.vote-type == 'cancelled') }}
+      continue-on-error: true
+      shell: bash
+      env:
+        GH_API_TOKEN: ${{ inputs.github-token }}
+      run: |
+        # Collect the errors block items as a step output
+        set -uo pipefail
+        items="$(python3 -I "${GITHUB_ACTION_PATH}/scripts/failed-jobs.py")" \
+          || items=""
+        delimiter="EOF_$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
+        if [[ "${items}" == *"${delimiter}"* ]]; then
+          items=""
+        fi
+        {
+          echo "items<<${delimiter}"
+          printf '%s\n' "${items}"
+          echo "${delimiter}"
+        } >> "${GITHUB_OUTPUT}"
+
     - name: "Compose review"
       # Builds and validates the 'gerrit review' command line before
       # any SSH setup, and also under ACT, so a bad input fails fast
       # and dry runs still exercise the validation.  All templated
-      # values arrive through 'env:'; scripts/review-command.sh
-      # documents the quoting.
+      # values arrive through 'env:'; scripts/compose-review.sh
+      # documents the layout and the quoting.
       id: review
       shell: bash
       env:
@@ -208,6 +261,11 @@ runs:
         GERRIT_PATCHSET_NUMBER: ${{ inputs.gerrit-patchset-number }}
         REVIEW_MESSAGE: ${{ inputs.message }}
         CLOSED_CHANGE: ${{ inputs.closed-change }}
+        REPORT_ANNOTATIONS: ${{ inputs.report-annotations }}
+        ERROR_ITEMS: ${{ steps.errors.outputs.items }}
+        TRAILERS: ${{ inputs.trailers }}
+        WORKFLOW_NAME: ${{ github.workflow }}
+        WORKFLOW_REF: ${{ github.workflow_ref }}
         # yamllint disable-line rule:line-length
         RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
       run: |
@@ -221,11 +279,11 @@ runs:
             exit 1
             ;;
         esac
-        review="$("${GITHUB_ACTION_PATH}/scripts/review-command.sh")"
+        review="$(bash "${GITHUB_ACTION_PATH}/scripts/compose-review.sh")"
         # The same review without labels, sent instead of the vote
         # when Gerrit refuses it because the change has closed.
         comment="$(COMMENT_ONLY=true \
-          "${GITHUB_ACTION_PATH}/scripts/review-command.sh")"
+          bash "${GITHUB_ACTION_PATH}/scripts/compose-review.sh")"
         # The commands can span lines (a multi-line message), so write
         # them with a random heredoc delimiter they cannot contain.
         delimiter="EOF_$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"

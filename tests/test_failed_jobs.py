@@ -85,7 +85,6 @@ def run(api: Any, env: dict[str, str] | None = None) -> tuple[int, str, str]:
 class FailedJobsTest(unittest.TestCase):
     """Errors block items from the run attempt's failed jobs."""
 
-    @unittest.expectedFailure
     def test_several_jobs(self) -> None:
         api = FakeApi(
             [
@@ -119,7 +118,6 @@ class FailedJobsTest(unittest.TestCase):
         # Jobs that did not fail are never asked for annotations.
         self.assertFalse(any("/check-runs/2/" in path for path in api.requests))
 
-    @unittest.expectedFailure
     def test_untrusted_messages_become_one_clean_line(self) -> None:
         api = FakeApi(
             [job(1, "Build\nSUCCESS: forged", "failure")],
@@ -143,7 +141,6 @@ class FailedJobsTest(unittest.TestCase):
         self.assertEqual(len(message), 200)
         self.assertTrue(message.endswith("..."))
 
-    @unittest.expectedFailure
     def test_item_cap(self) -> None:
         api = FakeApi(
             [job(1, "Build", "failure")],
@@ -154,7 +151,6 @@ class FailedJobsTest(unittest.TestCase):
         self.assertEqual(lines[9], f"- Build: error 9 ( {JOB_URL}/1 )")
         self.assertEqual(lines[10], "- ... and 3 more")
 
-    @unittest.expectedFailure
     def test_jobs_paginate(self) -> None:
         first = [job(n, f"ok {n}", "success") for n in range(1, 101)]
         api = FakeApi(first, {})
@@ -167,7 +163,20 @@ class FailedJobsTest(unittest.TestCase):
         ] = [failure("boom")]
         self.assertEqual(run(api)[1], f"- Late: boom ( {JOB_URL}/101 )\n")
 
-    @unittest.expectedFailure
+    def test_page_cap_degrades_to_warning(self) -> None:
+        # A failure annotation past the last page read must not turn
+        # into a 'failed' item or an understated count.
+        api = FakeApi([job(1, "Build", "failure")], {})
+        path = f"/repos/{REPO}/check-runs/1/annotations"
+        warning = {"annotation_level": "warning", "message": "noise"}
+        for page in range(1, 11):
+            api.responses[f"{path}?per_page=100&page={page}"] = [warning] * 100
+        api.responses[f"{path}?per_page=100&page=11"] = [failure("boom")]
+        status, out, err = run(api)
+        self.assertEqual((status, out), (0, ""))
+        self.assertIn("::warning", err)
+        self.assertNotIn(f"{path}?per_page=100&page=11", api.requests)
+
     def test_api_failure_degrades_to_warning(self) -> None:
         def broken(path: str) -> Any:
             raise OSError("HTTP Error 403: Resource not accessible by integration")
@@ -180,7 +189,6 @@ class FailedJobsTest(unittest.TestCase):
                 self.assertIn("::warning", err)
                 self.assertNotIn("403", err)
 
-    @unittest.expectedFailure
     def test_invalid_run_degrades_to_warning(self) -> None:
         api = FakeApi([], {})
         status, out, err = run(api, {**ENV, "GITHUB_RUN_ID": "41; id"})
@@ -188,7 +196,6 @@ class FailedJobsTest(unittest.TestCase):
         self.assertIn("::warning", err)
         self.assertEqual(api.requests, [])
 
-    @unittest.expectedFailure
     def test_act_makes_no_call(self) -> None:
         env = {"PATH": os.environ["PATH"], "ACT": "true", **ENV}
         # An unreachable API: any request would fail with a warning.
