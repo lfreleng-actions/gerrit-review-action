@@ -9,7 +9,7 @@
 # interpolates a templated value into shell code:
 #
 #   TARGET_HOST             SSH destination (validated by the caller)
-#   REVIEW_COMMAND          review to send, from review-command.sh
+#   REVIEW_COMMAND          review to send, from compose-review.sh
 #   COMMENT_COMMAND         the same review without labels; required
 #                           when COMMENT_ONLY is 'false'
 #   COMMENT_ONLY            'false' when REVIEW_COMMAND applies labels

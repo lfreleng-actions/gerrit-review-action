@@ -108,6 +108,31 @@ jobs:
           message: >-
             it's "quoted" $(touch pwned) `touch pwned` ; touch pwned \
 
+      - name: "With trailers"
+        uses: $/
+        with:
+          host: "gerrit.example.org"
+          username: "ci-bot"
+          key: "unused"
+          known_hosts: "unused"
+          gerrit-change-number: "1"
+          vote-type: "success"
+          message: "Built and tested."
+          trailers: |
+            Verify-Run: ${{ github.run_id }}
+            Artifact-Name: build-output
+
+      - name: "With report-annotations (no network under ACT)"
+        uses: $/
+        with:
+          host: "gerrit.example.org"
+          username: "ci-bot"
+          key: "unused"
+          known_hosts: "unused"
+          gerrit-change-number: "1"
+          vote-type: "failure"
+          report-annotations: "true"
+
       - name: "Oversized message"
         id: oversized
         continue-on-error: true
@@ -144,15 +169,32 @@ jobs:
           gerrit-change-number: "1"
           closed-change: "ignore"
 
+      - name: "Malformed trailer"
+        id: trailer
+        continue-on-error: true
+        uses: $/
+        with:
+          host: "gerrit.example.org"
+          username: "ci-bot"
+          key: "unused"
+          known_hosts: "unused"
+          gerrit-change-number: "1"
+          trailers: "not a trailer"
+
       - name: "Check the invalid inputs were rejected"
         shell: bash
         env:
           OVERSIZED: ${{ steps.oversized.outcome }}
           CONTROL: ${{ steps.control.outcome }}
           CLOSED: ${{ steps.closed.outcome }}
+          TRAILER: ${{ steps.trailer.outcome }}
         run: |
           # Each step must fail, and nothing may have run 'touch'
           status=0
+          if [ "${TRAILER}" != "failure" ]; then
+            echo "::error::Malformed trailer was not rejected"
+            status=1
+          fi
           if [ "${CLOSED}" != "failure" ]; then
             echo "::error::Invalid closed-change was not rejected"
             status=1
